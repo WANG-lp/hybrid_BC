@@ -22,16 +22,18 @@ int main(int argc, char *argv[])
 	std::set<int> source_vertices;
 	if(op.approx)
 	{
+		op.k = g.n * op.ratio;
 		if(op.k > g.n || op.k < 1)
 		{
 			op.k = g.n;
 		}
-
+		srand(0x4D5A);
 		while(source_vertices.size() < op.k)
 		{
 			int temp_source = rand() % g.n;
 			source_vertices.insert(temp_source);
 		}
+		std::cout << "vertices number: " << op.k << std::endl;
 	}
 
 	cudaEvent_t start,end;
