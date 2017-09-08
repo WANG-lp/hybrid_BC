@@ -28,7 +28,7 @@ inline void __checkCudaErrors(cudaError_t err, const char *file, const int line)
 class program_options
 {
 public:
-	program_options() : infile(NULL), verify(false), printBCscores(false), scorefile(NULL), device(-1), approx(false), k(256) {}
+	program_options() : infile(NULL), verify(false), printBCscores(false), scorefile(NULL), device(-1), approx(false), k(256) , ratio(1){}
 
 	char *infile;
 	bool verify;
@@ -37,6 +37,7 @@ public:
 	int device;
 	bool approx;
 	int k;
+	float ratio;
 };
 program_options parse_arguments(int argc, char *argv[]);
 

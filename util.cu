@@ -54,9 +54,15 @@ program_options parse_arguments(int argc, char *argv[])
 				op.infile = optarg;
 			break;
 
-			case 'k':
+			case 'k':{
 				op.approx = true;
-				op.k = atoi(optarg);
+				int r = 0;
+                for(int i = 0; i < strlen(optarg) -1; i++){
+                    r = r * 10 + (optarg[i] - '0');
+                }
+                op.ratio = r / 100.0;
+                std::cout << "ratio: " << op.ratio<<std::endl;
+            }
 			break;
 
 			case 'p':
