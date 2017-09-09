@@ -6,6 +6,7 @@
 #include <cuda.h>
 #include <cmath>
 #include <getopt.h>
+#include <cstring>
 
 #include "parse.h"
 
@@ -28,7 +29,7 @@ inline void __checkCudaErrors(cudaError_t err, const char *file, const int line)
 class program_options
 {
 public:
-	program_options() : infile(NULL), verify(false), printBCscores(false), scorefile(NULL), device(-1), approx(false), k(256) , ratio(1){}
+	program_options() : infile(NULL), verify(false), printBCscores(false), scorefile(NULL), device(-1), approx(false), k(256) , ratio(1), threshold(0){}
 
 	char *infile;
 	bool verify;
@@ -38,6 +39,7 @@ public:
 	bool approx;
 	int k;
 	float ratio;
+	float threshold;
 };
 program_options parse_arguments(int argc, char *argv[]);
 

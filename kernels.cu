@@ -3,7 +3,7 @@
 #define DIAMETER_SAMPLES 512
 
 //For portability reasons, we will not use CUDA 6 features here.
-std::vector<float> bc_gpu(graph g, int max_threads_per_block, int number_of_SMs, program_options op, const std::set<int> &source_vertices)
+std::vector<float> bc_gpu(graph g, int max_threads_per_block, int number_of_SMs, program_options op, const std::set<int> &source_vertices, float threshold)
 {
 	//Host result data
 	float *bc_gpu = new float[g.n];
@@ -45,6 +45,7 @@ std::vector<float> bc_gpu(graph g, int max_threads_per_block, int number_of_SMs,
 
 	checkCudaErrors(cudaMalloc((void**)&next_source_d,sizeof(int)));
 
+    printf("threshold: %f\n", threshold);
 	thrust::device_vector<int> source_vertices_d(source_vertices.size());
 	if(op.approx)
 	{
@@ -66,12 +67,12 @@ std::vector<float> bc_gpu(graph g, int max_threads_per_block, int number_of_SMs,
 	if(op.approx)
 	{
 
-		bc_gpu_opt<<<dimGrid,dimBlock>>>(bc_d,R_d,C_d,F_d,g.n,g.m,d_d,sigma_d,delta_d,Q_d,Q2_d,S_d,endpoints_d,next_source_d,pitch_d,pitch_sigma,pitch_delta,pitch_Q,pitch_Q2,pitch_S,pitch_endpoints,0,op.k,jia_d,diameters_d,thrust::raw_pointer_cast(source_vertices_d.data()),true);
+		bc_gpu_opt<<<dimGrid,dimBlock>>>(bc_d,R_d,C_d,F_d,g.n,g.m,d_d,sigma_d,delta_d,Q_d,Q2_d,S_d,endpoints_d,next_source_d,pitch_d,pitch_sigma,pitch_delta,pitch_Q,pitch_Q2,pitch_S,pitch_endpoints,0,op.k,jia_d,diameters_d,thrust::raw_pointer_cast(source_vertices_d.data()),true, threshold);
 		checkCudaErrors(cudaPeekAtLastError());
 	}
 	else
 	{
-		bc_gpu_opt<<<dimGrid,dimBlock>>>(bc_d,R_d,C_d,F_d,g.n,g.m,d_d,sigma_d,delta_d,Q_d,Q2_d,S_d,endpoints_d,next_source_d,pitch_d,pitch_sigma,pitch_delta,pitch_Q,pitch_Q2,pitch_S,pitch_endpoints,0,g.n,jia_d,diameters_d,thrust::raw_pointer_cast(source_vertices_d.data()),false);
+		bc_gpu_opt<<<dimGrid,dimBlock>>>(bc_d,R_d,C_d,F_d,g.n,g.m,d_d,sigma_d,delta_d,Q_d,Q2_d,S_d,endpoints_d,next_source_d,pitch_d,pitch_sigma,pitch_delta,pitch_Q,pitch_Q2,pitch_S,pitch_endpoints,0,g.n,jia_d,diameters_d,thrust::raw_pointer_cast(source_vertices_d.data()),false, threshold);
 		checkCudaErrors(cudaPeekAtLastError());
 	}
 
@@ -147,7 +148,7 @@ __device__ void bitonic_sort(int *values, int N)
 	}
 }
 
-__global__ void bc_gpu_opt(float *bc, const int *R, const int *C, const int *F, const int n, const int m, int *d, unsigned long long *sigma, float *delta, int *Q, int *Q2, int *S, int *endpoints, int *next_source, size_t pitch_d, size_t pitch_sigma, size_t pitch_delta, size_t pitch_Q, size_t pitch_Q2, size_t pitch_S, size_t pitch_endpoints, int start, int end, int *jia, int *diameters, int *source_vertices, bool approx)
+__global__ void bc_gpu_opt(float *bc, const int *R, const int *C, const int *F, const int n, const int m, int *d, unsigned long long *sigma, float *delta, int *Q, int *Q2, int *S, int *endpoints, int *next_source, size_t pitch_d, size_t pitch_sigma, size_t pitch_delta, size_t pitch_Q, size_t pitch_Q2, size_t pitch_S, size_t pitch_endpoints, int start, int end, int *jia, int *diameters, int *source_vertices, bool approx, float threshold)
 {
 	__shared__ int ind;
 	__shared__ int i;
@@ -159,6 +160,8 @@ __global__ void bc_gpu_opt(float *bc, const int *R, const int *C, const int *F, 
 	__shared__ int *Q2_row;
 	__shared__ int *S_row;
 	__shared__ int *endpoints_row;
+
+	__shared__ int successors_count;
 
 	if(j == 0)
 	{
@@ -182,6 +185,7 @@ __global__ void bc_gpu_opt(float *bc, const int *R, const int *C, const int *F, 
 			endpoints_row = (int*)((char*)endpoints + blockIdx.x*pitch_endpoints);
 			*jia = 0;
 		}
+        successors_count = 0;
 	}
 	__syncthreads();
 	if((ind==0) && (j < DIAMETER_SAMPLES))
@@ -256,10 +260,16 @@ __global__ void bc_gpu_opt(float *bc, const int *R, const int *C, const int *F, 
 		}
 		else
 		{
+            if(j==0){
+                successors_count = 0;
+            }
+            __syncthreads();
 			for(int kk=threadIdx.x; kk<Q2_len; kk+=blockDim.x)
 			{
-				Q_row[kk] = Q2_row[kk];
-				S_row[kk+S_len] = Q2_row[kk];
+                int v = Q2_row[kk];
+				Q_row[kk] = v;
+                atomicAdd(&successors_count,R[v + 1] - R[v]);
+                S_row[kk+S_len] = v;
 			}
 			__syncthreads();
 			if(j == 0)
@@ -276,7 +286,7 @@ __global__ void bc_gpu_opt(float *bc, const int *R, const int *C, const int *F, 
 
 		while(!sp_calc_done)
 		{
-			if((*jia) && (Q_len > 512))
+			if((*jia) && (Q_len > 512) && (successors_count > threshold * 2 * m))
 			{
 				for(int k=threadIdx.x; k<2*m; k+=blockDim.x)
 				{
@@ -333,12 +343,19 @@ __global__ void bc_gpu_opt(float *bc, const int *R, const int *C, const int *F, 
 			}
 			else //If there is additional work, transfer elements from Q2 to Q, reset lengths, and add vertices to the stack
 			{
-				for(int kk=threadIdx.x; kk<Q2_len; kk+=blockDim.x)
-				{
-					Q_row[kk] = Q2_row[kk];
-					S_row[kk+S_len] = Q2_row[kk];
-				}
-				__syncthreads();
+                if(j==0){
+                    successors_count = 0;
+                }
+                __syncthreads();
+                for(int kk=threadIdx.x; kk<Q2_len; kk+=blockDim.x)
+                {
+                    int v = Q2_row[kk];
+                    Q_row[kk] = v;
+                    atomicAdd(&successors_count,R[v + 1] - R[v]);
+                    S_row[kk+S_len] = v;
+                }
+                __syncthreads();
+
 				if(j == 0)
 				{
 					endpoints_row[endpoints_len] = endpoints_row[endpoints_len-1] + Q2_len;

@@ -49,7 +49,7 @@ int main(int argc, char *argv[])
 	float GPU_time;
 	std::vector<float> bc_g;
 	start_clock(start,end);
-	bc_g = bc_gpu(g,max_threads_per_block,number_of_SMs,op,source_vertices);
+	bc_g = bc_gpu(g,max_threads_per_block,number_of_SMs,op,source_vertices, op.threshold);
 	GPU_time = end_clock(start,end);
 
 	if(op.verify)

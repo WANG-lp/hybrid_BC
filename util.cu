@@ -31,6 +31,7 @@ program_options parse_arguments(int argc, char *argv[])
 		{"help",no_argument,0,'h'},
 		{"infile",required_argument,0,'i'},
 		{"approx",required_argument,0,'k'},
+        {"threshold", required_argument, 0, 't'},
 		{"printscores",optional_argument,0,'p'},
 		{"verify",no_argument,0,'v'},
 		{0,0,0,0} //Terminate with null
@@ -38,7 +39,7 @@ program_options parse_arguments(int argc, char *argv[])
 
 	int option_index = 0;
 
-	while((c = getopt_long(argc,argv,"d:hi:k:p::v",long_options,&option_index)) != -1)
+	while((c = getopt_long(argc,argv,"d:hi:k:t:p::v",long_options,&option_index)) != -1)
 	{
 		switch(c)
 		{
@@ -53,7 +54,9 @@ program_options parse_arguments(int argc, char *argv[])
 			case 'i':
 				op.infile = optarg;
 			break;
-
+            case 't':
+                op.threshold = optarg ? atof(optarg) : 0.0;
+                break;
 			case 'k':{
 				op.approx = true;
 				int r = 0;
