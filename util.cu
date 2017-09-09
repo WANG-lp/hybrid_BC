@@ -1,4 +1,5 @@
 #include "util.cuh"
+#include <queue>
 
 //Note: Times are returned in seconds
 void start_clock(cudaEvent_t &start, cudaEvent_t &end)
@@ -38,7 +39,7 @@ program_options parse_arguments(int argc, char *argv[])
 
 	int option_index = 0;
 
-	while((c = getopt_long(argc,argv,"d:hi:k:p::v",long_options,&option_index)) != -1)
+	while((c = getopt_long(argc,argv,"d:hi:k:p::v::r",long_options,&option_index)) != -1)
 	{
 		switch(c)
 		{
@@ -73,6 +74,9 @@ program_options parse_arguments(int argc, char *argv[])
 			case 'v':
 				op.verify = true;
 			break;
+            case 'r':
+                op.one_deg_reduce = true;
+                break;
 			
 			case '?': //Invalid argument: getopt will print the error msg itself
 				
@@ -153,3 +157,131 @@ void verify(graph g, const std::vector<float> bc_cpu, const std::vector<float> b
 	std::cout << "RMS Error: " << error << std::endl;
 	std::cout << "Maximum error: " << max_error << std::endl;
 }
+
+bool reduce_1_degree_vertices(graph *in_g, graph *out_g) {
+    out_g->total_comp = find_components_size(in_g);
+
+    if (out_g->which_components == NULL) {
+        out_g->R = new int[in_g->n + 1];
+        out_g->F = new int[in_g->m * 2];
+        out_g->C = new int[in_g->m * 2];
+        out_g->weight = new int[in_g->n];
+        std::fill_n(out_g->weight, in_g->n, 1);
+        out_g->bc = new int[in_g->n];
+        std::memset(out_g->bc, 0, in_g->n * sizeof(int));
+        out_g->components_sizes = in_g->components_sizes;
+        out_g->which_components = in_g->which_components;
+        out_g->n = in_g->n;
+        out_g->m = in_g->m;
+    }
+
+    int *R = new int[in_g->n + 1];
+    int *F = new int[in_g->m * 2];
+    int *C = new int[in_g->m * 2];
+
+    std::memcpy(R, in_g->R, sizeof(int) * (in_g->n + 1));
+    std::memcpy(F, in_g->F, sizeof(int) * (in_g->m * 2));
+    std::memcpy(C, in_g->C, sizeof(int) * (in_g->m * 2));
+
+    std::set<std::pair<int, int> > deleted;
+
+    bool finish = true;
+#ifdef DEBUG
+    std::cout << "\tCSR INDEX ARRAY:\n\t\t";
+    for (int i = 0; i < in_g->n; i++) {
+        std::cout << R[i] << '\t';
+    }
+    std::cout << std::endl;
+#endif
+
+    for (int i = 0; i < in_g->n; i++) {
+        if (R[i + 1] - R[i] == 1) {
+            int v = C[R[i]];
+            if (deleted.find(std::make_pair(i, v)) != deleted.end() ||
+                deleted.find(std::make_pair(v, i)) != deleted.end())
+                continue;
+            finish = false;
+
+            out_g->bc[i] += (out_g->weight[i] - 1) *
+                            (out_g->components_sizes[out_g->which_components[i]] - out_g->weight[i]);
+            out_g->bc[v] += (out_g->components_sizes[out_g->which_components[i]] - 1 - out_g->weight[i]) *
+                            (out_g->weight[i]);
+            out_g->weight[v] += out_g->weight[i];
+//            out_g->bc[v] += 2 * (out_g->components_sizes[out_g->which_components[v]] -
+//                                out_g->weight[v] - 1);
+            out_g->which_components[i] = out_g->total_comp++;
+            out_g->m--;
+            //un-directed edge
+            deleted.insert(std::make_pair(i, v));
+            deleted.insert(std::make_pair(v, i));
+        }
+    }
+
+    int r_index = 0;
+    //int m = 0;
+    for (int i = 0; i < in_g->n; i++) {
+        out_g->R[i] = r_index;
+        for (int j = R[i]; j < R[i + 1]; j++) {
+            if (deleted.find(std::make_pair(i, C[j])) == deleted.end() &&
+                deleted.find(std::make_pair(C[j], i)) == deleted.end()) {
+                out_g->C[r_index] = C[j];
+                out_g->F[r_index++] = i;
+            }
+        }
+    }
+    //std::cout << r_index << std::endl;
+    out_g->R[in_g->n] = r_index;
+
+
+    delete[] R;
+    delete[] F;
+    delete[] C;
+    return finish;
+}
+
+int find_components_size(graph *g) {
+    if (g->which_components != NULL)
+        return g->total_comp;
+
+    g->which_components = new int[g->n];
+
+    std::vector<int> components_sizes(g->n, 0);
+
+    std::vector<bool> vis(g->n, false);
+
+
+    int total_components = 0;
+
+    for (int i = 0; i < g->n; i++) {
+        if (!vis[i]) {
+            std::queue<int> Q;
+            Q.push(i);
+            vis[i] = true;
+            components_sizes[total_components] = 1;
+            g->which_components[i] = total_components;
+            while (!Q.empty()) {
+                int v = Q.front();
+                Q.pop();
+                for (int j = g->R[v]; j < g->R[v + 1]; j++) {
+                    int u = g->C[j];
+                    if (!vis[u]) {
+                        vis[u] = true;
+                        Q.push(u);
+                        components_sizes[total_components]++;
+                        g->which_components[u] = total_components;
+                    }
+                }
+            }
+            total_components++;
+        }
+
+    }
+    g->components_sizes = new int[total_components];
+    for (int i = 0; i < total_components; i++) {
+        g->components_sizes[i] = components_sizes[i];
+    }
+
+    std::cout << "\tTotal components: " << total_components << "\n";
+    return total_components;
+}
+

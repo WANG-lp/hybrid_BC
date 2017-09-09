@@ -13,7 +13,7 @@
 class graph 
 {
 public:	
-	graph() : R(NULL), C(NULL), F(NULL), n(-1), m(-1) {}
+	graph() : R(NULL), C(NULL), F(NULL), n(-1), m(-1), weight(NULL), which_components(NULL), components_sizes(NULL), total_comp(0), bc(NULL) {}
 
 	void print_adjacency_list();
 	void print_BC_scores(const std::vector<float> bc, char *outfile);
@@ -22,13 +22,20 @@ public:
 	void print_high_degree_vertices();
 	void print_numerical_edge_file(char *outfile);
 	void print_number_of_isolated_vertices();
-	
+
+
 	int *R;
 	int *C;
 	int *F;
 	int n; //Number of vertices
 	int m; //Number of edges
-	boost::bimap<unsigned,std::string> IDs; //Associate vertices with other data. In general the unsigned could be replaced with a struct of attributes. 
+	boost::bimap<unsigned,std::string> IDs; //Associate vertices with other data. In general the unsigned could be replaced with a struct of attributes.
+
+	int *weight;
+	int *which_components;
+	int *components_sizes;
+	int total_comp;
+	int *bc;
 };
 
 graph parse(char *file);

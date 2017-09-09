@@ -14,6 +14,21 @@ int main(int argc, char *argv[])
 	choose_device(max_threads_per_block,number_of_SMs,op);
 	
 	graph g = parse(op.infile);
+	graph g_out;
+	int left_vertices = 0;
+	if(op.one_deg_reduce){
+		bool finish = reduce_1_degree_vertices(&g, &g_out);
+		while (!finish) {
+			finish = reduce_1_degree_vertices(&g_out, &g_out);
+		}
+		for (int i = 0; i < g.n; i++) {
+			if (g_out.R[i + 1] - g_out.R[i] > 0) {
+				left_vertices++;
+			}
+		}
+		std::cout << "\tDeleted " << g.n - left_vertices << " vertices\n";
+		std::cout << "\t1 degree vertices percent: " << (g.n - left_vertices) * 100 / (float) g.n << "%\n";
+	}
 
 	std::cout << "Number of nodes: " << g.n << std::endl;
 	std::cout << "Number of edges: " << g.m << std::endl;
@@ -49,7 +64,11 @@ int main(int argc, char *argv[])
 	float GPU_time;
 	std::vector<float> bc_g;
 	start_clock(start,end);
-	bc_g = bc_gpu(g,max_threads_per_block,number_of_SMs,op,source_vertices);
+	if(op.one_deg_reduce){
+		bc_g = bc_gpu(g_out, max_threads_per_block, number_of_SMs, op, source_vertices, op.one_deg_reduce, g_out.weight);
+	}else {
+		bc_g = bc_gpu(g, max_threads_per_block, number_of_SMs, op, source_vertices, op.one_deg_reduce, g.weight);
+	}
 	GPU_time = end_clock(start,end);
 
 	if(op.verify)

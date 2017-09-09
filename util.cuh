@@ -28,7 +28,8 @@ inline void __checkCudaErrors(cudaError_t err, const char *file, const int line)
 class program_options
 {
 public:
-	program_options() : infile(NULL), verify(false), printBCscores(false), scorefile(NULL), device(-1), approx(false), k(256) , ratio(1){}
+	program_options() : infile(NULL), verify(false), printBCscores(false), scorefile(NULL), device(-1), approx(false), k(256) , ratio(1), one_deg_reduce(
+			false){}
 
 	char *infile;
 	bool verify;
@@ -38,8 +39,13 @@ public:
 	bool approx;
 	int k;
 	float ratio;
+	bool one_deg_reduce;
 };
 program_options parse_arguments(int argc, char *argv[]);
+
+bool reduce_1_degree_vertices(graph *in_g, graph *out_g);
+
+int find_components_size(graph *g);
 
 //Timing routines
 void start_clock(cudaEvent_t &start, cudaEvent_t &end);
